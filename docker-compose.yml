@@ -9,3 +9,63 @@ services:
       - ./tests/test.kdbx:/db.kdbx
     security_opt:
       - seccomp=seccomp/keyring.json
+
+  ### Optional auth backends for testing ###
+  #
+  # The services below are disabled by default. To enable one, remove the
+  # leading '#' from its block (and from the matching volumes entry at the
+  # bottom, where present), then run: docker compose up -d
+  #
+  # --- OpenLDAP (auth_backend: LDAP) ---
+  #
+  # Seeded with user 'testuser' / password 'testpass'.
+  # Matching config.yml settings:
+  #
+  #   auth_backend: 'LDAP'
+  #   LDAP:
+  #     uri: 'ldap://openldap:1389'        # 'ldap://127.0.0.1:1389' when running the app outside compose
+  #     scope: 'subtree'
+  #     base_dn: 'ou=users,dc=example,dc=org'
+  #     filter: '(objectClass=inetOrgPerson)'
+  #     login_attribute: 'uid'
+  #     bind: 'cn=admin,dc=example,dc=org'
+  #     password: 'adminpassword'
+  #
+  #openldap:
+  #  image: docker.io/bitnamilegacy/openldap:2.6
+  #  ports:
+  #    - "1389:1389"
+  #  environment:
+  #    - LDAP_ROOT=dc=example,dc=org
+  #    - LDAP_ADMIN_USERNAME=admin
+  #    - LDAP_ADMIN_PASSWORD=adminpassword
+  #    - LDAP_USERS=testuser
+  #    - LDAP_PASSWORDS=testpass
+
+  # --- Keycloak (auth_backend: OIDC) ---
+  #
+  # Admin console: http://localhost:8081 (admin / admin).
+  # One-time setup: create a realm (e.g. 'keepass'), add a client with
+  # 'Client authentication' enabled, set its valid redirect URI to
+  # http://localhost:8080/callback_user_auth, create a test user with a
+  # password, then copy the client id/secret into config.yml:
+  #
+  #   auth_backend: 'OIDC'
+  #   OIDC:
+  #     issuer: 'http://keycloak:8080/realms/keepass'   # 'http://localhost:8081/realms/keepass' outside compose
+  #     client_id: 'keepass4web'
+  #     client_secret: '<client secret from Keycloak>'
+  #     save_id_token: true
+  #     scopes:
+  #       - 'profile'
+  #
+  # Note: redirecting auth backends may require cookie_samesite: 'lax'.
+  #
+  #keycloak:
+  #  image: quay.io/keycloak/keycloak:26.0
+  #  command: start-dev
+  #  ports:
+  #    - "8081:8080"
+  #  environment:
+  #    - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+  #    - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
