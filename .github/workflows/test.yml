@@ -22,7 +22,6 @@ jobs:
     name: Backend Tests
     runs-on: ubuntu-latest
     env:
-      RUSTFLAGS: "-Ctarget-cpu=sandybridge -Ctarget-feature=+aes,+sse2,+sse4.1,+ssse3"
       RUST_BACKTRACE: full
     steps:
       - uses: actions/checkout@v5
@@ -34,8 +33,6 @@ jobs:
   frontend-e2e:
     name: Frontend E2E Tests
     runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "-Ctarget-cpu=sandybridge -Ctarget-feature=+aes,+sse2,+sse4.1,+ssse3"
     steps:
       - uses: actions/checkout@v5
       - name: Setup Node.js
