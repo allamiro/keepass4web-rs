@@ -60,7 +60,13 @@ async fn user_login(request: HttpRequest, session: Session, config: Data<Config>
         return err;
     }
 
-    let client_ip = request.connection_info().realip_remote_addr().unwrap_or("unknown").to_string();
+    // forwarding headers are spoofable, only honor them when explicitly
+    // configured (i.e. behind a reverse proxy that sets them)
+    let client_ip = if config.trust_proxy_headers {
+        request.connection_info().realip_remote_addr().unwrap_or("unknown").to_string()
+    } else {
+        request.peer_addr().map(|addr| addr.ip().to_string()).unwrap_or_else(|| "unknown".to_string())
+    };
     let rate_key = format!("{}|{}", client_ip, params.username.to_lowercase());
     if let Some(remaining) = rate_limiter.check(&rate_key).await {
         info!("user login from '{}' ({}): rate limited for {}s", params.username, client_ip, remaining.as_secs());
