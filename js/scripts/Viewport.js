@@ -15,15 +15,27 @@ class Viewport extends React.Component {
         this.onEntryCreated = this.onEntryCreated.bind(this)
         this.onDeleteEntry = this.onDeleteEntry.bind(this)
         this.onSaveDb = this.onSaveDb.bind(this)
+        this.onGroupRenamed = this.onGroupRenamed.bind(this)
+        this.onGroupCreated = this.onGroupCreated.bind(this)
 
         this.state = {
             tree: {},
             entry: null,
             group: null,
+            groupDepth: 0,
             saveModal: false,
             savePassword: '',
             saveStatus: '',
         }
+    }
+
+    findGroupDepth(group, targetId, depth = 0) {
+        if (group.id === targetId) return depth
+        for (const child of (group.children || [])) {
+            const d = this.findGroupDepth(child, targetId, depth + 1)
+            if (d >= 0) return d
+        }
+        return -1
     }
 
     scroll(id) {
@@ -39,7 +51,8 @@ class Viewport extends React.Component {
         if (this.serverRequest)
             this.serverRequest.abort()
 
-        this.setState({ entry: null, groupMask: true })
+        const depth = this.findGroupDepth(this.state.tree, group.id)
+        this.setState({ entry: null, groupMask: true, groupDepth: depth >= 0 ? depth : 0 })
 
         this.serverRequest = KeePass4Web.fetch('get_group_entries', {
             method: 'GET',
@@ -107,6 +120,29 @@ class Viewport extends React.Component {
 
     onEntryCreated() {
         this.refreshGroup()
+    }
+
+    onGroupCreated() {
+        KeePass4Web.fetch('get_groups', {
+            method: 'GET',
+            success: (data) => this.setState({ tree: data.groups }),
+            error: KeePass4Web.error.bind(this),
+        })
+    }
+
+    onGroupRenamed(groupId, newTitle) {
+        // Patch the title in the tree without a full reload
+        const patchTree = (groups) => groups.map(g => ({
+            ...g,
+            title: g.id === groupId ? newTitle : g.title,
+            children: g.children ? patchTree(g.children) : g.children,
+        }))
+        this.setState(prev => ({
+            tree: { ...prev.tree, children: patchTree(prev.tree.children || []) },
+            group: prev.group && prev.group.id === groupId
+                ? { ...prev.group, title: newTitle }
+                : prev.group,
+        }))
     }
 
     onDeleteEntry(entry) {
@@ -207,10 +243,13 @@ class Viewport extends React.Component {
                     <div id="group-viewer" className="col-sm-4">
                         <GroupViewer
                             group={this.state.group}
+                            groupDepth={this.state.groupDepth}
                             onSelect={this.onSelect}
                             mask={this.state.groupMask}
                             onEntryCreated={this.onEntryCreated}
                             onDeleteEntry={this.onDeleteEntry}
+                            onGroupRenamed={this.onGroupRenamed}
+                            onGroupCreated={this.onGroupCreated}
                         />
                     </div>
                     <div id="node-viewer" className="col-sm-6">

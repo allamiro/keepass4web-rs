@@ -33,6 +33,18 @@ struct UpdateEntry {
     notes: String,
 }
 
+#[derive(Deserialize)]
+struct NewGroup {
+    parent_id: Uuid,
+    title: String,
+}
+
+#[derive(Deserialize)]
+struct RenameGroup {
+    id: Uuid,
+    title: String,
+}
+
 // 404 for missing entries/groups/icons, 500 for everything else
 fn error_response(err: &anyhow::Error, message: &str) -> HttpResponse {
     let resp = json!(
@@ -280,6 +292,36 @@ async fn update_entry(session: Session, config: Data<Config>, db_cache: Data<DbC
     }
 
     info!("update_entry from '{}': {}", username, params.id);
+    HttpResponse::Ok().json(json!({ "success": true }))
+}
+
+#[post("/group")]
+async fn create_group(session: Session, config: Data<Config>, db_cache: Data<DbCache>, params: web::Form<NewGroup>) -> impl Responder {
+    let username = session.get_user_id();
+    let mut new_id = Uuid::nil();
+
+    if let Err(err) = util::modify_db(&session, &config, &db_cache, |kp| {
+        new_id = kp.create_group(&params.parent_id, &params.title)?;
+        Ok(())
+    }).await {
+        return err;
+    }
+
+    info!("create_group from '{}': {} under {}", username, params.title, params.parent_id);
+    HttpResponse::Ok().json(json!({ "success": true, "data": { "id": new_id } }))
+}
+
+#[put("/group")]
+async fn rename_group(session: Session, config: Data<Config>, db_cache: Data<DbCache>, params: web::Form<RenameGroup>) -> impl Responder {
+    let username = session.get_user_id();
+
+    if let Err(err) = util::modify_db(&session, &config, &db_cache, |kp| {
+        kp.rename_group(&params.id, &params.title)
+    }).await {
+        return err;
+    }
+
+    info!("rename_group from '{}': {} -> '{}'", username, params.id, params.title);
     HttpResponse::Ok().json(json!({ "success": true }))
 }
 

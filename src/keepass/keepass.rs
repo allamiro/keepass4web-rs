@@ -253,6 +253,35 @@ impl KeePass {
         Ok(())
     }
 
+    pub fn create_group(&mut self, parent_id: &Uuid, name: &str) -> Result<Uuid> {
+        // Root accepts unlimited groups. Non-root groups are capped at 2 subgroups,
+        // which also blocks nesting beyond one level below root.
+        if *parent_id != self.db.root.uuid {
+            let parent = Self::find_group_by_id(&self.db.root, parent_id)
+                .ok_or(NotFoundError("group"))?;
+            let subgroup_count = parent.children.iter()
+                .filter(|n| matches!(n, Node::Group(_)))
+                .count();
+            if subgroup_count >= 2 {
+                return Err(anyhow::anyhow!("a group may have at most 2 subgroups"));
+            }
+        }
+
+        let parent = Self::find_group_by_id_mut(&mut self.db.root, parent_id)
+            .ok_or(NotFoundError("group"))?;
+        let group = KpGroup::new(name);
+        let id = group.uuid;
+        parent.children.push(Node::Group(group));
+        Ok(id)
+    }
+
+    pub fn rename_group(&mut self, group_id: &Uuid, name: &str) -> Result<()> {
+        let group = Self::find_group_by_id_mut(&mut self.db.root, group_id)
+            .ok_or(NotFoundError("group"))?;
+        group.name = name.to_string();
+        Ok(())
+    }
+
     pub fn delete_entry(&mut self, entry_id: &Uuid) -> Result<()> {
         if !Self::remove_entry_from_group(&mut self.db.root, entry_id) {
             return Err(NotFoundError("entry").into());
