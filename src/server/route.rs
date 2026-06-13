@@ -15,6 +15,7 @@ use crate::server::route::auth::{
 };
 use crate::server::route::keepass::{
     create_entry,
+    create_group,
     delete_entry,
     get_entry,
     get_file,
@@ -22,6 +23,7 @@ use crate::server::route::keepass::{
     get_groups,
     get_icon,
     get_protected,
+    rename_group,
     search_entries,
     update_entry,
 };
@@ -58,6 +60,8 @@ pub fn setup_routes(cfg: &mut web::ServiceConfig) {
             .service(create_entry)
             .service(update_entry)
             .service(delete_entry)
+            .service(create_group)
+            .service(rename_group)
         )
 
         .service(callback_user_auth)
