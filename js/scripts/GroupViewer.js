@@ -3,6 +3,14 @@ import Classnames from 'classnames'
 
 import withNavigateHook from './nagivateHook'
 
+const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+
+function generatePassword(length = 20) {
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{}|;:,.<>?'
+    const arr = new Uint8Array(length)
+    window.crypto.getRandomValues(arr)
+    return Array.from(arr).map(b => charset[b % charset.length]).join('')
+}
 
 class GroupViewer extends React.Component {
     constructor(props) {
@@ -11,11 +19,14 @@ class GroupViewer extends React.Component {
             showForm: false,
             form: { title: '', username: '', password: '', url: '', notes: '' },
             saving: false,
+            showPassword: false,
         }
         this.onNewEntry = this.onNewEntry.bind(this)
         this.onFormChange = this.onFormChange.bind(this)
         this.onSubmit = this.onSubmit.bind(this)
         this.onCancel = this.onCancel.bind(this)
+        this.onGeneratePassword = this.onGeneratePassword.bind(this)
+        this.toggleShowPassword = this.toggleShowPassword.bind(this)
     }
 
     getIcon(element) {
@@ -26,7 +37,7 @@ class GroupViewer extends React.Component {
     }
 
     onNewEntry() {
-        this.setState({ showForm: true, form: { title: '', username: '', password: '', url: '', notes: '' } })
+        this.setState({ showForm: true, showPassword: false, form: { title: '', username: '', password: '', url: '', notes: '' } })
     }
 
     onCancel() {
@@ -35,6 +46,15 @@ class GroupViewer extends React.Component {
 
     onFormChange(field, e) {
         this.setState(prev => ({ form: { ...prev.form, [field]: e.target.value } }))
+    }
+
+    onGeneratePassword() {
+        const pw = generatePassword()
+        this.setState(prev => ({ form: { ...prev.form, password: pw }, showPassword: true }))
+    }
+
+    toggleShowPassword() {
+        this.setState(prev => ({ showPassword: !prev.showPassword }))
     }
 
     onSubmit(e) {
@@ -69,6 +89,7 @@ class GroupViewer extends React.Component {
         if (!this.props.group) return (<div className={classes}></div>)
 
         const group = this.props.group
+        const isSearchResult = group.id === NIL_UUID
 
         let entries = []
         for (var i in group.entries) {
@@ -98,12 +119,13 @@ class GroupViewer extends React.Component {
 
         let newEntryForm = null
         if (this.state.showForm) {
+            const eyeIcon = this.state.showPassword ? 'glyphicon-eye-close' : 'glyphicon-eye-open'
             newEntryForm = (
                 <tr key="new-entry-form">
                     <td colSpan="3">
                         <form onSubmit={this.onSubmit}>
                             <div className="form-group form-group-sm">
-                                <input className="form-control" placeholder="Title" required
+                                <input className="form-control" placeholder="Title" required autoFocus
                                     value={this.state.form.title} onChange={this.onFormChange.bind(this, 'title')} />
                             </div>
                             <div className="form-group form-group-sm">
@@ -111,8 +133,27 @@ class GroupViewer extends React.Component {
                                     value={this.state.form.username} onChange={this.onFormChange.bind(this, 'username')} />
                             </div>
                             <div className="form-group form-group-sm">
-                                <input className="form-control" type="password" placeholder="Password"
-                                    value={this.state.form.password} onChange={this.onFormChange.bind(this, 'password')} />
+                                <div className="input-group">
+                                    <input
+                                        className="form-control"
+                                        type={this.state.showPassword ? 'text' : 'password'}
+                                        placeholder="Password"
+                                        value={this.state.form.password}
+                                        onChange={this.onFormChange.bind(this, 'password')}
+                                    />
+                                    <div className="input-group-btn">
+                                        <button type="button" className="btn btn-default btn-sm"
+                                            title="Show / hide password"
+                                            onClick={this.toggleShowPassword}>
+                                            <span className={'glyphicon ' + eyeIcon}></span>
+                                        </button>
+                                        <button type="button" className="btn btn-default btn-sm"
+                                            title="Generate random password"
+                                            onClick={this.onGeneratePassword}>
+                                            <span className="glyphicon glyphicon-refresh"></span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                             <div className="form-group form-group-sm">
                                 <input className="form-control" placeholder="URL"
@@ -141,13 +182,15 @@ class GroupViewer extends React.Component {
                 <div className="panel-heading">
                     {this.getIcon(group)}
                     {group.title}
-                    <button
-                        className="btn btn-success btn-xs pull-right"
-                        onClick={this.onNewEntry}
-                        title="New entry"
-                    >
-                        <span className="glyphicon glyphicon-plus"></span> New Entry
-                    </button>
+                    {!isSearchResult && (
+                        <button
+                            className="btn btn-success btn-xs pull-right"
+                            onClick={this.onNewEntry}
+                            title="New entry"
+                        >
+                            <span className="glyphicon glyphicon-plus"></span> New Entry
+                        </button>
+                    )}
                 </div>
                 <div className="panel-body">
                     <table className="table table-hover table-condensed kp-table">

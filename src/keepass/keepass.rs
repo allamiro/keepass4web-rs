@@ -322,6 +322,7 @@ impl KeePass {
         }
 
         Ok(EntryGroup {
+            id: group.uuid,
             title: group.name.clone(),
             entries,
             icon: group.icon_id,
@@ -367,6 +368,7 @@ impl KeePass {
         let entries = Self::find_entries_by_string(&self.db.root, &rgx, &self.config.search);
 
         Ok(EntryGroup {
+            id: Uuid::nil(),
             title: format!("Search results for '{}'", params.term),
             entries,
             // search icon
