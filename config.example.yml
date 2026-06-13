@@ -98,16 +98,16 @@ htpasswd:
 # uncomment the 'keycloak:' block in docker-compose.yml)
 #
 # Pre-provisioned: client 'keepass4web', user testuser / testpass.
-# Admin console:   http://localhost:8081  (KC_ADMIN_USERNAME/PASSWORD from .env)
+# Admin console:   http://localhost:8180  (KC_ADMIN_USERNAME/PASSWORD from .env)
 #
 # To use: set auth_backend: 'OIDC', fill in your real values below.
 # Note: OIDC redirect requires cookie_samesite: 'lax' (see below).
 # ──────────────────────────────────────────────────────────────
 # OIDC:
 #     # Issuer URL (the OpenID Connect discovery endpoint is <issuer>/.well-known/openid-configuration)
-#     # docker-compose service:          http://keycloak:8080/realms/keepass
-#     # running the app outside compose: http://localhost:8081/realms/keepass
-#     issuer: 'http://keycloak:8080/realms/keepass'
+#     # docker-compose service and outside compose: http://keycloak:8180/realms/keepass
+#     # (Keycloak runs on port 8180; keepass app is on 8080)
+#     issuer: 'http://keycloak:8180/realms/keepass'
 #
 #     client_id: 'keepass4web'
 #     client_secret: 'insecure-example-client-secret'

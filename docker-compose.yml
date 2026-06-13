@@ -49,12 +49,12 @@ services:
   # The realm 'keepass' is imported automatically from tests/keycloak/realm.json:
   # confidential client 'keepass4web' (secret in .env.example) with the redirect
   # URI http://localhost:8080/callback_user_auth, and user 'testuser' / 'testpass'.
-  # Admin console: http://localhost:8081 (KC_ADMIN_USERNAME / KC_ADMIN_PASSWORD from .env).
+  # Admin console: http://localhost:8180 (KC_ADMIN_USERNAME / KC_ADMIN_PASSWORD from .env).
   # Matching config.yml settings (with the .env.example defaults):
   #
   #   auth_backend: 'OIDC'
   #   OIDC:
-  #     issuer: 'http://keycloak:8080/realms/keepass'   # 'http://localhost:8081/realms/keepass' outside compose
+  #     issuer: 'http://keycloak:8180/realms/keepass'   # 'http://localhost:8180/realms/keepass' outside compose
   #     client_id: 'keepass4web'
   #     client_secret: 'insecure-example-client-secret'
   #     save_id_token: true
@@ -65,9 +65,9 @@ services:
   #
   #keycloak:
   #  image: quay.io/keycloak/keycloak:26.0
-  #  command: start-dev --import-realm
+  #  command: start-dev --http-port=8180 --import-realm
   #  ports:
-  #    - "8081:8080"
+  #    - "8180:8180"
   #  volumes:
   #    - ./tests/keycloak:/opt/keycloak/data/import:ro
   #  environment:
