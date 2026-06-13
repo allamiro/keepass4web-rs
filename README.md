@@ -9,6 +9,9 @@
   - [CONFIGURATION](#configuration)
   - [DEPLOYMENT](#deployment)
     - [Container](#container)
+    - [Docker Compose — htpasswd (default)](#docker-compose--htpasswd-default)
+    - [Docker Compose — LDAP (OpenLDAP)](#docker-compose--ldap-openldap)
+    - [Docker Compose — OIDC (Keycloak)](#docker-compose--oidc-keycloak)
     - [Classic](#classic)
   - [BACKENDS](#backends)
     - [Authentication Backends](#authentication-backends)
@@ -72,7 +75,12 @@ The minified, bundled file will be written to public/scripts/bundle.js
 
 ## CONFIGURATION
 
-- See `config.yml`
+Copy `config.example.yml` to `config.yml` and edit as needed. The example file contains
+ready-to-use snippets for every supported backend, with values that match the bundled
+docker-compose test services so you can test any backend with minimal changes.
+
+The default `config.yml` uses htpasswd authentication. See `config.example.yml` for
+LDAP and OIDC examples and documentation of every option.
 
 ## DEPLOYMENT
 
@@ -129,35 +137,111 @@ Example podman:
 
 (master password: `test`)
 
+> **Docker Desktop on macOS / Windows:** the kernel keyring syscalls are blocked by default.
+> Set `use_keyring: false` in `config.yml` to use the in-memory key store instead.
 
-### Docker Compose
+### Docker Compose — htpasswd (default)
 
-For easier deployment, you can use Docker Compose file
+The bundled `docker-compose.yml` starts the app with local htpasswd authentication:
 
-Then, to start the container run:
+```bash
+# 1. Create a password file (bcrypt)
+htpasswd -cB .htpasswd <username>
 
-
-```
+# 2. Start the stack
 docker-compose up -d
-
 ```
 
-To stop the container:
+App is available at <http://localhost:8080> (KeePass master password: `test`).
 
-```
+To stop:
+
+```bash
 docker-compose down
 ```
 
+### Docker Compose — LDAP (OpenLDAP)
+
+The repo ships a pre-configured OpenLDAP test service. Enable it with these steps:
+
+```bash
+# 1. Copy example credentials (safe defaults for local testing)
+cp .env.example .env
+
+# 2. Uncomment the 'openldap' service block in docker-compose.yml
+
+# 3. Switch config.yml to LDAP — replace auth_backend and add the LDAP block:
+cat >> config.yml <<'EOF'
+
+auth_backend: 'LDAP'
+LDAP:
+  uri: 'ldap://openldap:1389'
+  scope: 'subtree'
+  base_dn: 'ou=users,dc=example,dc=org'
+  filter: '(objectClass=inetOrgPerson)'
+  login_attribute: 'uid'
+  bind: 'cn=admin,dc=example,dc=org'
+  password: 'adminpassword'
+EOF
+
+# 4. Start the stack
+docker-compose up -d
+```
+
+Log in with the test user defined in `.env` (`LDAP_TEST_USER` / `LDAP_TEST_PASSWORD`,
+defaults `testuser` / `testpass`).
+
+For a full LDAP config reference including Active Directory and per-user database
+attributes see `config.example.yml`.
+
+### Docker Compose — OIDC (Keycloak)
+
+The repo ships a Keycloak instance with a pre-imported realm (`keepass`) and a
+pre-configured client (`keepass4web`). Enable it with these steps:
+
+```bash
+# 1. Copy example credentials (safe defaults for local testing)
+cp .env.example .env
+
+# 2. Uncomment the 'keycloak' service block in docker-compose.yml
+
+# 3. Switch config.yml to OIDC — replace auth_backend and add the OIDC block:
+cat >> config.yml <<'EOF'
+
+auth_backend: 'OIDC'
+OIDC:
+  issuer: 'http://keycloak:8180/realms/keepass'
+  client_id: 'keepass4web'
+  client_secret: 'insecure-example-client-secret'
+  save_id_token: true
+  scopes:
+    - 'profile'
+
+# OIDC redirect flow requires lax cookie policy
+cookie_samesite: 'lax'
+EOF
+
+# 4. Start the stack (Keycloak takes ~30 s to start)
+docker-compose up -d
+```
+
+- App: <http://localhost:8080> — log in with `testuser` / `testpass`
+- Keycloak admin console: <http://localhost:8180> — credentials from `.env`
+  (`KC_ADMIN_USERNAME` / `KC_ADMIN_PASSWORD`, defaults `admin` / `admin`)
+
+For a full OIDC config reference see `config.example.yml`.
+
+> **Note:** if you run the app outside docker-compose, replace `keycloak` in the
+> issuer URL with `localhost`: `http://localhost:8180/realms/keepass`.
+
 ### Classic
 
-This requires rust installed, compile the binary:
+This requires rust installed. Compile and run the binary:
 
-    export RUSTFLAGS="-Ctarget-cpu=sandybridge -Ctarget-feature=+aes,+sse2,+sse4.1,+ssse3"
-    cargo build --bins --release --target-dir release
-
-Run the binary:
-
-    target/release/keepass4web-rs
+```bash
+cargo build --bins --release
+./target/release/keepass4web-rs
+```
 
 ## BACKENDS
 
