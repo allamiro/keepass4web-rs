@@ -162,6 +162,60 @@ pub(crate) async fn db_is_open(session: &Session, config: &Config, db_cache: &Db
     Ok(true)
 }
 
+/// Decrypt the cached database, run `modify`, then re-encrypt and store back.
+/// The old session key is revoked and replaced with a fresh one.
+pub(crate) async fn modify_db<F>(
+    session: &Session,
+    config: &Config,
+    db_cache: &DbCache,
+    modify: F,
+) -> Result<(), HttpResponse>
+where
+    F: FnOnce(&mut KeePass) -> anyhow::Result<()>,
+{
+    let mut keepass = get_db(session, config, db_cache).await?;
+
+    if let Err(err) = modify(&mut keepass) {
+        return Err(HttpResponse::UnprocessableEntity().json(json!({
+            "success": false,
+            "message": err.to_string(),
+        })));
+    }
+
+    let (new_key, new_enc) = match keepass.to_enc() {
+        Ok(v) => v,
+        Err(err) => {
+            error!("failed to re-encrypt database after modification: {}", err);
+            return Err(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": "failed to encrypt database",
+            })));
+        }
+    };
+
+    // Revoke the old key before storing the new one so it is replaced atomically
+    // from the session's perspective (the old key_id is still in the session here).
+    let _ = revoke_key(config, session);
+
+    if let Err(err) = store_key(config, session, new_key) {
+        error!("failed to store new key after modification: {}", err);
+        return Err(HttpResponse::InternalServerError().json(json!({
+            "success": false,
+            "message": "failed to store key",
+        })));
+    }
+
+    if let Err(err) = db_cache.store(session, new_enc).await {
+        error!("failed to store modified database: {}", err);
+        return Err(HttpResponse::InternalServerError().json(json!({
+            "success": false,
+            "message": "failed to store database",
+        })));
+    }
+
+    Ok(())
+}
+
 pub(crate) fn retrieve_key(config: &Config, session: &Session) -> anyhow::Result<SecretKey> {
     let key_id = session.get::<KeyId>(SESSION_KEY_KEY_ID)?
         .ok_or(anyhow!("failed to retrieve key id from session"))?;
