@@ -40,6 +40,7 @@ use openidconnect::core::{
     CoreGenderClaim,
     CoreIdToken,
     CoreJsonWebKey,
+    CoreJsonWebKeySet,
     CoreJsonWebKeyType,
     CoreJsonWebKeyUse,
     CoreJweContentEncryptionAlgorithm,
@@ -50,6 +51,7 @@ use openidconnect::core::{
     CoreTokenType,
 };
 use openidconnect::reqwest::async_http_client;
+use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 
 use crate::auth_backend::{AuthBackend, AuthCache, LoginType, LogoutType, ROUTE_CALLBACK_USER_AUTH, UserInfo};
@@ -109,6 +111,7 @@ struct OidcParams {
 
 pub struct Oidc {
     pub(crate) config: oidc::Oidc,
+    http_client: HttpClient,
 }
 
 // how long provider metadata (incl. the JWKS) is served from cache
@@ -138,6 +141,7 @@ impl Oidc {
     pub fn new(config: &Config) -> Self {
         Self {
             config: config.oidc.clone(),
+            http_client: HttpClient::new(),
         }
     }
 
@@ -156,6 +160,70 @@ impl Oidc {
             )?
         );
         Ok(client)
+    }
+
+    async fn fetch_metadata_from_url(&self, url: &str) -> Result<ProviderMetadataWithLogout> {
+        let body = self.http_client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        let body = self.rewrite_server_endpoints(body, url)?;
+        let metadata: ProviderMetadataWithLogout = serde_json::from_str(&body)?;
+
+        // openidconnect marks the JWKS field #[serde(skip)], so raw deserialization
+        // leaves it empty. Fetch the JWKS separately from the (already-rewritten) URI.
+        let jwks_body = self.http_client
+            .get(metadata.jwks_uri().url().as_str())
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        let jwks: CoreJsonWebKeySet = serde_json::from_str(&jwks_body)?;
+        Ok(metadata.set_jwks(jwks))
+    }
+
+    // In container setups where discovery_url differs from issuer (e.g. internal
+    // http://keycloak:8180 vs external http://localhost:8180), Keycloak's --hostname
+    // flag causes it to return all endpoint URLs with the external hostname even when
+    // the discovery doc is fetched from the internal URL. Rewrite the server-to-server
+    // endpoints (token, jwks, userinfo) to use the internal host so the app can reach
+    // them, while leaving browser-facing URLs (authorization_endpoint,
+    // end_session_endpoint) pointing at the external host so redirects still work.
+    fn rewrite_server_endpoints(&self, body: String, discovery_url: &str) -> Result<String> {
+        let issuer = match &self.config.issuer {
+            Some(u) => u,
+            None => return Ok(body),
+        };
+
+        let discovery_origin = url_origin(discovery_url);
+        let issuer_origin = url_origin(issuer.as_str());
+
+        if discovery_origin == issuer_origin || discovery_origin.is_empty() || issuer_origin.is_empty() {
+            return Ok(body);
+        }
+
+        let mut json: serde_json::Value = serde_json::from_str(&body)?;
+        for field in &[
+            "token_endpoint",
+            "jwks_uri",
+            "userinfo_endpoint",
+            "introspection_endpoint",
+            "revocation_endpoint",
+            "device_authorization_endpoint",
+        ] {
+            if let Some(val) = json.get_mut(*field) {
+                if let Some(url_str) = val.as_str() {
+                    *val = serde_json::Value::String(
+                        url_str.replacen(&issuer_origin, &discovery_origin, 1),
+                    );
+                }
+            }
+        }
+        Ok(serde_json::to_string(&json)?)
     }
 
     async fn get_metadata(&self, cache: &AuthCache, force_refresh: bool) -> Result<ProviderMetadataWithLogout> {
@@ -182,11 +250,19 @@ impl Oidc {
             }
         }
 
-        match ProviderMetadataWithLogout::discover_async(
-            // issuer presence is enforced by validate_config at startup
-            IssuerUrl::from_url(self.config.issuer.clone().unwrap()),
-            async_http_client,
-        ).await {
+        let result = match &self.config.discovery_url {
+            // discovery_url bypasses the openidconnect issuer-must-match check so the
+            // app can fetch metadata from an internal URL (e.g. http://keycloak:8180)
+            // while the issuer in tokens is an external URL (e.g. http://localhost:8180).
+            Some(url) => self.fetch_metadata_from_url(url.as_str()).await.map_err(Into::into),
+            None => ProviderMetadataWithLogout::discover_async(
+                // issuer presence is enforced by validate_config at startup
+                IssuerUrl::from_url(self.config.issuer.clone().unwrap()),
+                async_http_client,
+            ).await.map_err(Into::into),
+        };
+
+        match result {
             Ok(metadata) => {
                 *guard = Some(CachedMetadata {
                     metadata: metadata.clone(),
@@ -200,7 +276,7 @@ impl Oidc {
                     warn!("OIDC provider metadata refresh failed, serving cached copy: {}", err);
                     return Ok(cached.metadata.clone());
                 }
-                Err(err.into())
+                Err(err)
             }
         }
     }
@@ -355,6 +431,20 @@ impl AuthBackend for Oidc {
             }
         )
     }
+}
+
+fn url_origin(url: &str) -> String {
+    url::Url::parse(url)
+        .ok()
+        .map(|u| {
+            let mut s = format!("{}://{}", u.scheme(), u.host_str().unwrap_or(""));
+            if let Some(port) = u.port() {
+                s.push(':');
+                s.push_str(&port.to_string());
+            }
+            s
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
