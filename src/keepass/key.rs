@@ -101,6 +101,18 @@ mod tests {
         assert_eq!(key.expose_secret(), data.expose_secret());
     }
 
+    // regression: the store must not assume a fixed secret length
+    #[test]
+    fn key_roundtrip_other_lengths() {
+        for secret in [&b"short"[..], &[7u8; 64][..]] {
+            let mut key = SecretKey::new(secret.to_vec().into_boxed_slice());
+            key.store(Duration::from_secs(10)).unwrap();
+            let data = SecretKey::retrieve(&key.key_id, Duration::from_secs(10)).unwrap();
+
+            assert_eq!(key.expose_secret(), data.expose_secret());
+        }
+    }
+
     #[test]
     fn memory_store_roundtrip_and_revoke() {
         let secret = b"0123456789abcdef0123456789abcdef";

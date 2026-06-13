@@ -22,11 +22,11 @@ pub(super) fn store(key_id: &str, secret: &[u8], timeout: Duration) -> Result<()
 pub(super) fn retrieve(key_id: &str, timeout: Duration) -> Result<Box<[u8]>> {
     let keyr = get_keyring()?;
 
-    let mut key = keyr.search(key_id).map_err(map_err)?;
+    let key = keyr.search(key_id).map_err(map_err)?;
 
-    // TODO: determine buffer size
-    let mut data = vec![0; 32].into_boxed_slice();
-    key.read(&mut data).map_err(map_err)?;
+    // read the actual payload length instead of assuming 32 bytes,
+    // so secrets of any length roundtrip unchanged
+    let data = key.read_to_vec().map_err(map_err)?.into_boxed_slice();
 
     key.set_timeout(timeout.as_secs() as usize).map_err(map_err)?;
 
